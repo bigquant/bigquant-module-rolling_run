@@ -6,35 +6,39 @@ import pandas as pd
 import biglearning.module2.common.interface as I
 from biglearning.api import M
 from biglearning.module2.common.data import Outputs, DataSource
+from biglearning.module2.common.utils import smart_object
 
 
-log = logbook.Logger('rolling_run')
 bigquant_cacheable = True
 
 # 模块接口定义
 bigquant_category = '机器学习'
 bigquant_friendly_name = '滚动运行'
 bigquant_doc_url = 'https://bigquant.com/docs/'
+log = logbook.Logger(bigquant_friendly_name)
 
 
 def bigquant_run(
-    train_run: I.port('训练，训练模块的延迟执行输出'),
-    input_list: I.port('数据列表'),
-    param_name: I.str('参数名，train_run 中用于接收滚动运行数据的参数')='rolling_input') -> [
-        I.port('证券数据', 'data')
+    run: I.port('训练，训练模块的延迟执行输出'),
+    input_list: I.port('输入数据(列表)'),
+    param_name: I.str('参数名，run 中用于接收滚动运行数据的参数。示例1：rolling_input；示例2：run_a=rolling_b|run_c=rolling_d。具体见源代码')='rolling_input') -> [
+        I.port('输出数据(列表)', 'data')
     ]:
     '''
-    通用滚动运行。简单的可以理解为 map(train_run, input_list)
+    通用滚动运行。简单的可以理解为 map(run, input_list)
     '''
-    train_run_data = train_run.read_pickle()
-    module_run = M.m_get_module(train_run_data['name']).m_get_version(train_run_data['version'])
-    module_kwargs = train_run_data['kwargs']
+    run_data = smart_object(run)
+    module_run = M.m_get_module(run_data['name']).m_get_version(run_data['version'])
+    module_kwargs = run_data['kwargs']
 
-    input_list_data = input_list.read_pickle()
+    param_mapping = [s.strip().split('=') for s in param_name.strip().split('|')]
+    param_mapping = [s[:2] if len(s) >= 2 else (s[0], None) for s in param_mapping]
+
+    input_list_data = smart_object(input_list)
     rollings = []
     for item in input_list_data:
-        log.info('运行, %s, %s' % (item['start_date'], item['end_date']))
-        module_kwargs[param_name] = item
+        for k, v in param_mapping:
+            module_kwargs[k] = item[v] if v else item
         item['output'] = module_run(**module_kwargs)
         rollings.append(item)
 
